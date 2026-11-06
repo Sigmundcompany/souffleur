@@ -115,7 +115,11 @@ svg.solid{fill:currentColor;stroke:none}
 #cut{position:fixed;inset:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:auto minmax(0,1fr) auto;background:var(--ink)}
 #cut header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:calc(env(safe-area-inset-top,0px) + 10px);padding-bottom:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line)}
 #cut h2{margin:0;font:700 22px/1 var(--display)}
-#cutView{min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;background:#000}
+#cutView{position:relative;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;background:#000}
+#fxView{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;pointer-events:none}
+#looks{display:flex;gap:6px;overflow-x:auto;padding-block:8px}
+.look{flex:0 0 auto;min-height:40px;padding:0 13px;border-radius:99px;background:var(--raise);color:var(--paper);white-space:nowrap}
+.look[aria-pressed=true]{background:var(--cue);color:#1b1503;font-weight:700}
 #cutVideo{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain}
 #cutSide{grid-row:2/4;grid-column:2;overflow:auto;border-left:1px solid var(--line);padding:6px 16px 16px;padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:4px}
 #cutSide h3{margin:14px 0 2px;font:700 16px/1.2 var(--display);color:var(--cue)}
@@ -250,7 +254,7 @@ svg.solid{fill:currentColor;stroke:none}
       <button class="btn go" id="cutExport">Exporter la vidéo</button>
     </div>
   </header>
-  <div id="cutView"><video id="cutVideo" playsinline muted></video></div>
+  <div id="cutView"><video id="cutVideo" playsinline muted></video><canvas id="fxView" hidden></canvas></div>
   <div id="cutLine">
     <div class="cutbar">
       <button class="ico" id="cutPlay" aria-label="Lire" style="background:var(--paper);color:var(--ink)"><svg class="solid"><use id="cutPlayIcon" href="#i-play"/></svg></button>
@@ -272,6 +276,14 @@ svg.solid{fill:currentColor;stroke:none}
     <label class="row"><span>Couper les « euh » repérés</span><input id="oFiller" type="checkbox"></label>
     <p class="note">Repérés à l'oreille, en jaune sur la bande : réécoute-les avant d'exporter.</p>
     <button class="btn" id="cutMark" style="margin-top:6px">Début de coupe</button>
+    <div id="fxPanel">
+      <h3>Image</h3>
+      <div class="cutbar"><button class="btn go" id="fxAuto">Embellir</button><button class="btn" id="fxReset">Retirer</button><button class="btn" id="fxCompare">Maintenir pour comparer</button></div>
+      <div id="looks" role="group" aria-label="Looks"></div>
+      <label class="row"><span>Peau lissée</span><output id="oSkinOut"></output><input id="oSkin" type="range" min="0" max="100" step="5"></label>
+      <label class="row"><span>Lumière du visage</span><output id="oLightOut"></output><input id="oLight" type="range" min="0" max="100" step="5"></label>
+      <label class="row"><span>Netteté</span><output id="oSharpOut"></output><input id="oSharp" type="range" min="0" max="100" step="5"></label>
+    </div>
     <h3>Son</h3>
     <label class="row"><span>Réduire le bruit de fond</span><input id="oNoise" type="checkbox"></label>
     <label class="row"><span>Force</span><output id="oNoiseOut"></output><input id="oNoiseAmt" type="range" min="10" max="100" step="10"></label>
@@ -310,7 +322,7 @@ addEventListener('error', e => note('erreur : ' + e.message));
 addEventListener('unhandledrejection', e => note('erreur : ' + (e.reason?.message || e.reason)));
 function diagText() {
   return [
-    'Souffleur v3', navigator.userAgent,
+    'Souffleur v4', navigator.userAgent,
     `VideoEncoder=${!!window.VideoEncoder} AudioEncoder=${!!window.AudioEncoder} MediaRecorder=${!!window.MediaRecorder}`,
     `écran ${screen.width}x${screen.height} mémoire ${navigator.deviceMemory || '?'}`,
     ...diag,
@@ -826,6 +838,7 @@ document.fonts?.ready.then(() => keepPlace(measure));
 
 loadCurrent();
 </script>
-<script src="montage.js?v=3"></script>
+<script src="beaute.js?v=6"></script>
+<script src="montage.js?v=6"></script>
 
 </html>

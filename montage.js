@@ -234,7 +234,7 @@ function joinRanges(x, sr, ranges, fade = .008) {
 
 /* ---------- État du montage ---------- */
 const $ = id => document.getElementById(id);
-const O = Object.assign({ pause: .5, cutSilence: true, cutFiller: true, noise: true, noiseAmt: 60, voice: true, loud: true }, store.get('souffleur.montage', {}));
+const O = Object.assign({ pause: .5, cutSilence: true, cutFiller: true, noise: true, noiseAmt: 60, voice: true, loud: true, look: 'none', skin: 0, light: 0, sharp: 0 }, store.get('souffleur.montage', {}));
 const saveO = () => store.set('souffleur.montage', O);
 let blob = null, name = 'video', raw = null, dur = 0, stage1 = null, final = null;
 let cuts = [], manual = [], fillers = [], markStart = null, zoom = 1;
@@ -348,6 +348,56 @@ function setPlay(on) {
     playhead();
   }, 30);
 }
+/* ---------- Filtres beauté : aperçu ---------- */
+let fxView = null, fxRaf = 0, fxDirty = true, fxCompare = false;
+function fxShow() { return !!fxView && Beaute.active(O) && !fxCompare; }
+function fxLoop() {
+  fxRaf = requestAnimationFrame(fxLoop);
+  const v = $('cutVideo'), c = $('fxView');
+  c.hidden = !fxShow();
+  if (c.hidden || v.readyState < 2 || !(fxDirty || playing)) return;
+  fxDirty = false;
+  const box = $('cutView'), k = Math.min(1, 900 / Math.max(v.videoWidth, v.videoHeight), Math.max(box.clientWidth, box.clientHeight) * 1.5 / Math.max(v.videoWidth, v.videoHeight));
+  try { fxView.render(v, Math.round(v.videoWidth * k), Math.round(v.videoHeight * k), O, v.videoHeight); }
+  catch (err) { note('aperçu filtre : ' + err.message); fxView = null; c.hidden = true; }
+}
+function fxStart() {
+  if (!fxView) {
+    try { fxView = new Beaute.FX($('fxView')); }
+    catch (err) { note('filtres indisponibles : ' + err.message); $('fxPanel').hidden = true; return; }
+  }
+  fxDirty = true;
+  cancelAnimationFrame(fxRaf); fxRaf = requestAnimationFrame(fxLoop);
+}
+function fxBind() {
+  const row = $('looks');
+  for (const [id, l] of Object.entries(Beaute.LOOKS)) {
+    const b = document.createElement('button');
+    b.className = 'look'; b.textContent = l.name; b.dataset.look = id;
+    b.setAttribute('aria-pressed', O.look === id);
+    b.onclick = () => { O.look = id; saveO(); fxSync(); };
+    row.append(b);
+  }
+  const slide = (id, key) => {
+    const e = $(id), out = $(id + 'Out');
+    e.oninput = () => { O[key] = +e.value; out.textContent = O[key] + ' %'; saveO(); fxDirty = true; };
+  };
+  slide('oSkin', 'skin'); slide('oLight', 'light'); slide('oSharp', 'sharp');
+  $('fxAuto').onclick = () => { Object.assign(O, { skin: 55, light: 30, sharp: 35, look: 'nature' }); saveO(); fxSync(); };
+  $('fxReset').onclick = () => { Object.assign(O, { skin: 0, light: 0, sharp: 0, look: 'none' }); saveO(); fxSync(); };
+  const cmp = $('fxCompare'), hold = on => { fxCompare = on; fxDirty = true; };
+  cmp.onpointerdown = () => hold(true);
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) cmp.addEventListener(ev, () => hold(false));
+  $('cutVideo').addEventListener('seeked', () => { fxDirty = true; });
+  $('cutVideo').addEventListener('loadeddata', () => { fxDirty = true; });
+  fxSync();
+}
+function fxSync() {
+  for (const [id, key] of [['oSkin', 'skin'], ['oLight', 'light'], ['oSharp', 'sharp']]) { $(id).value = O[key]; $(id + 'Out').textContent = O[key] + ' %'; }
+  document.querySelectorAll('.look').forEach(b => b.setAttribute('aria-pressed', b.dataset.look === O.look));
+  fxDirty = true;
+}
+
 function playhead() {
   const t = $('cutVideo').currentTime, w = $('wave').clientWidth;
   $('cutHead').style.transform = `translateX(${(t / dur * w).toFixed(1)}px)`;
@@ -460,6 +510,8 @@ async function runExport(accel, r) {
     };
     const pushVideo = async () => {
       const sink = new M.VideoSampleSink(track, { hardwareAcceleration: accel });
+      let fx = null;
+      if (Beaute.active(O)) { try { fx = new Beaute.FX(document.createElement('canvas')); note('filtres appliqués'); } catch (err) { note('filtres ignorés : ' + err.message); } }
       let base = 0, last = -1, frames = 0;
       for (const x of ranges) {
         for await (const s of sink.samples(x.start, x.end)) {
@@ -467,7 +519,13 @@ async function runExport(accel, r) {
           const t = Math.max(0, s.timestamp - x.start) + base;
           if (s.timestamp < x.end && t > last + .0005) {
             s.setTimestamp(t); last = t; frames++;
-            await vs.add(s);
+            if (fx) {
+              const src = s.toCanvasImageSource();
+              const fw = src.displayWidth || src.width, fh = src.displayHeight || src.height;
+              fx.render(src, fw, fh, O);
+              const out = new M.VideoSample(fx.canvas, { timestamp: t, duration: s.duration, rotation: 0 });
+              await vs.add(out); out.close();
+            } else await vs.add(s);
             r.beat = Date.now();
             status('Export de la vidéo…', Math.min(99, t / total * 100));
           }
@@ -554,6 +612,7 @@ async function open(file, fileName) {
   if (doneUrl) { URL.revokeObjectURL(doneUrl); doneUrl = null; }
   const v = $('cutVideo');
   v.preload = 'auto'; v.muted = true;
+  fxStart();
   v.onloadeddata = () => { note(`vidéo prête ${v.videoWidth}x${v.videoHeight}`); if (v.currentTime === 0) v.currentTime = .05; };
   v.onerror = () => { note('vidéo illisible, code ' + v.error?.code); };
   v.src = URL.createObjectURL(blob);
@@ -582,6 +641,7 @@ async function open(file, fileName) {
 function close() {
   setPlay(false); procRun++;
   const v = $('cutVideo'); URL.revokeObjectURL(v.src); v.removeAttribute('src'); v.load();
+  cancelAnimationFrame(fxRaf); $('fxView').hidden = true;
   $('cut').hidden = true; $('desk').hidden = false;
   raw = final = stage1 = null; blob = outBlob = null; player.removeAttribute('src');
 }
@@ -608,6 +668,7 @@ function bind() {
   $('cutZoomIn').onclick = () => { zoom = Math.min(16, zoom * 2); peaks = null; draw(); };
   $('cutZoomOut').onclick = () => { zoom = Math.max(1, zoom / 2); peaks = null; draw(); };
   $('wave').onclick = onTimeline;
+  fxBind();
   for (const b of document.querySelectorAll('[data-ab]')) b.onclick = () => {
     ab = b.dataset.ab;
     document.querySelectorAll('[data-ab]').forEach(x => x.setAttribute('aria-pressed', x === b));
