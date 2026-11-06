@@ -72,7 +72,6 @@ svg.solid{fill:currentColor;stroke:none}
 #flip.mirror{transform:scaleX(-1)}
 #text{position:relative;will-change:transform;font-weight:700;line-height:1.38;color:#fff;text-shadow:0 1px 6px #000a;overflow-wrap:anywhere}
 #text p{margin:0 0 .9em}
-#text .w.done{opacity:.38}
 #mark{position:absolute;left:0;right:0;height:0;border-top:1px dashed #ffc24766;pointer-events:none}
 #mark::before{content:"";position:absolute;left:max(2px,env(safe-area-inset-left,0px));top:-9px;border:9px solid transparent;border-left:13px solid var(--cue)}
 .top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:calc(env(safe-area-inset-top,0px) + 8px);padding-bottom:6px;padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:max(10px,env(safe-area-inset-right,0px))}
@@ -148,7 +147,6 @@ svg.solid{fill:currentColor;stroke:none}
     </div>
     <span id="clock" aria-live="off"></span>
     <div class="group">
-      <button class="ico" id="voice" aria-pressed="false" aria-label="Suivre ma voix" title="Suivre ma voix"><svg><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
       <button class="ico" id="camBtn" aria-pressed="false" aria-label="Afficher la caméra" title="Afficher la caméra"><svg><path d="M3 8a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 10.500l5-3v9l-5-3"/></svg></button>
       <button class="ico" id="swap" aria-label="Changer de caméra" title="Changer de caméra" hidden><svg><path d="M4 9a8 8 0 0 1 14-3l2 2M20 4v4h-4M20 15a8 8 0 0 1-14 3l-2-2M4 20v-4h4"/></svg></button>
     </div>
@@ -180,7 +178,6 @@ svg.solid{fill:currentColor;stroke:none}
     <label class="row"><span>Voile sur la caméra</span><output id="o-veil"></output><input id="veilR" type="range" min="0" max="90" step="5"></label>
     <label class="row"><span>Texte en miroir (vitre de prompteur)</span><input id="mirror" type="checkbox"></label>
     <label class="row"><span>Compte à rebours</span><select id="delay"><option value="0">Aucun</option><option value="3">3 secondes</option><option value="5">5 secondes</option></select></label>
-    <label class="row"><span>Langue du suivi de voix</span><select id="lang"><option value="fr-FR">Français</option><option value="en-US">Anglais</option><option value="es-ES">Espagnol</option></select></label>
   </div>
 
   <div id="take" hidden>
@@ -201,43 +198,8 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
-/* ---------- Alignement de la voix sur le texte ---------- */
 function norm(w) {
   return w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
-}
-function similar(a, b) {
-  if (a === b) return true;
-  if (Math.min(a.length, b.length) < 4) return false;
-  if (a.startsWith(b) || b.startsWith(a)) return true;
-  if (Math.abs(a.length - b.length) > 1) return false;
-  let i = 0, j = 0, edits = 0;
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) { i++; j++; continue; }
-    if (++edits > 1) return false;
-    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
-  }
-  return true;
-}
-/* Renvoie l'indice du dernier mot prononcé dans le texte, ou la position actuelle si rien ne colle. */
-function alignSpoken(tokens, spoken, cursor, ahead = 30) {
-  const tail = spoken.slice(-6);
-  if (!tail.length) return cursor;
-  let best = cursor, bestScore = 0;
-  const from = Math.max(0, cursor - 4), to = Math.min(tokens.length - 1, cursor + ahead);
-  for (let i = from; i <= to; i++) {
-    let j = tail.length - 1, k = i, hit = 0, miss = 0;
-    while (j >= 0 && k >= 0 && miss <= 2) {
-      if (similar(tail[j], tokens[k])) { hit++; j--; k--; }
-      else { miss++; j--; }
-    }
-    if (!similar(tail[tail.length - 1], tokens[i]) && !similar(tail[tail.length - 2] || '', tokens[i])) continue;
-    const need = tail.length === 1 ? (tokens[i].length >= 5 ? 1 : 2) : 2;
-    if (hit < need) continue;
-    if (i < cursor && hit < 3) continue;
-    const score = hit - Math.abs(i - cursor) * 0.03;
-    if (score > bestScore) { bestScore = score; best = i; }
-  }
-  return best;
 }
 
 /* ---------- Textes ---------- */
@@ -338,7 +300,7 @@ $('#del').onclick = () => {
 const phone = matchMedia('(max-width:760px)').matches;
 const S = Object.assign({
   wpm: 140, size: phone ? 34 : 56, width: phone ? 100 : 75, zone: 60,
-  line: 20, veil: 45, mirror: false, delay: 3, lang: 'fr-FR', voice: false, facing: 'user',
+  line: 20, veil: 45, mirror: false, delay: 3, facing: 'user',
 }, store.get('souffleur.settings', {}));
 const saveS = () => store.set('souffleur.settings', S);
 
@@ -367,34 +329,23 @@ $('#mirror').checked = S.mirror;
 $('#mirror').onchange = e => { S.mirror = e.target.checked; saveS(); applySettings(); };
 $('#delay').value = S.delay;
 $('#delay').onchange = e => { S.delay = +e.target.value; saveS(); };
-$('#lang').value = S.lang;
-$('#lang').onchange = e => { S.lang = e.target.value; saveS(); if (listening) { stopVoice(); startVoice(); } };
 
 /* ---------- Défilement ---------- */
-let pos = 0, target = 0, maxPos = 0, lineY = 0, pps = 60, wordCount = 1;
+let pos = 0, maxPos = 0, lineY = 0, pps = 60, wordCount = 1;
 let playing = false, lastT = 0, rafId = 0, lastClock = 0;
-let tokens = [], tokenEls = [], cursor = 0, doneUpTo = -1;
 
 function renderText() {
   const text = $('#text');
   text.textContent = '';
-  tokens = []; tokenEls = []; cursor = 0; doneUpTo = -1;
   for (const para of current().text.trim().split(/\n\s*\n/)) {
     const p = document.createElement('p');
     para.split('\n').forEach((line, li) => {
       if (li) p.append(document.createElement('br'));
-      for (const w of line.trim().split(/\s+/)) {
-        if (!w) continue;
-        const span = document.createElement('span');
-        span.className = 'w'; span.textContent = w;
-        p.append(span, ' ');
-        const n = norm(w);
-        if (n) { tokens.push(n); tokenEls.push(span); }
-      }
+      p.append(line.trim());
     });
     text.append(p);
   }
-  wordCount = Math.max(1, tokens.length);
+  wordCount = Math.max(1, countWords(current().text));
 }
 function measure() {
   const stage = $('#stage');
@@ -415,7 +366,7 @@ function measure() {
 function keepPlace(fn) {
   const r = maxPos ? pos / maxPos : 0;
   fn();
-  pos = target = r * maxPos;
+  pos = r * maxPos;
   paint();
 }
 function paint() {
@@ -438,20 +389,17 @@ function tick(t) {
   const dt = Math.min(.5, (t - lastT) / 1000 || 0);
   lastT = t;
   if (playing) {
-    if (S.voice) pos += (target - pos) * (1 - Math.exp(-dt * 5));
-    else pos += pps * dt;
-    if (pos >= maxPos) { pos = maxPos; if (!S.voice) setPlaying(false); }
+    pos += pps * dt;
+    if (pos >= maxPos) { pos = maxPos; setPlaying(false); }
     paint();
   }
   updateClock(t);
 }
 function setPlaying(on) {
   playing = on;
-  target = pos;
   $('#stage').classList.toggle('running', on);
   $('#play use').setAttribute('href', on ? '#i-pause' : '#i-play');
   $('#play').setAttribute('aria-label', on ? 'Arrêter le défilement' : 'Lancer le défilement');
-  if (S.voice) { if (on) startVoice(); else stopVoice(); }
 }
 function countdown() {
   return new Promise(res => {
@@ -475,63 +423,13 @@ async function togglePlay() {
   setPlaying(true);
 }
 function jumpTo(p) {
-  pos = target = Math.min(maxPos, Math.max(0, p));
-  if (S.voice) syncCursor();
+  pos = Math.min(maxPos, Math.max(0, p));
   paint();
-}
-function syncCursor() {
-  let i = 0;
-  while (i < tokenEls.length - 1 && tokenEls[i].offsetTop < pos) i++;
-  cursor = i;
-  for (const el of tokenEls) el.classList.remove('done');
-  doneUpTo = -1;
 }
 function setSpeed(d) {
   S.wpm = Math.min(300, Math.max(60, S.wpm + d));
   saveS(); $('#wpm b').textContent = S.wpm;
   measure();
-}
-
-/* ---------- Suivi de la voix ---------- */
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recog = null, listening = false;
-function onSpeech(e) {
-  let said = '';
-  for (let i = e.resultIndex; i < e.results.length; i++) said += ' ' + e.results[i][0].transcript;
-  const spoken = said.split(/\s+/).map(norm).filter(Boolean);
-  const next = alignSpoken(tokens, spoken, cursor);
-  if (next === cursor) return;
-  cursor = next;
-  for (let i = doneUpTo + 1; i <= cursor; i++) tokenEls[i].classList.add('done');
-  doneUpTo = Math.max(doneUpTo, cursor);
-  target = Math.min(maxPos, tokenEls[cursor].offsetTop);
-}
-function startVoice() {
-  if (listening || !SR) return;
-  listening = true;
-  recog = new SR();
-  recog.lang = S.lang; recog.continuous = true; recog.interimResults = true;
-  recog.onresult = onSpeech;
-  recog.onerror = e => {
-    if (e.error === 'no-speech' || e.error === 'aborted') return;
-    const msg = e.error === 'audio-capture'
-      ? "Le micro est déjà utilisé, souvent par l'enregistrement sur téléphone. Défilement automatique activé."
-      : "Le suivi de voix est refusé par le navigateur. Défilement automatique activé.";
-    setVoice(false); toast(msg);
-  };
-  recog.onend = () => { if (listening) { try { recog.start(); } catch {} } };
-  try { recog.start(); } catch { listening = false; }
-}
-function stopVoice() {
-  listening = false;
-  if (recog) { recog.onend = null; try { recog.stop(); } catch {} recog = null; }
-}
-function setVoice(on) {
-  if (on && !SR) return toast("Ce navigateur ne sait pas suivre la voix. Utilise Chrome ou Edge.");
-  S.voice = on; saveS();
-  $('#voice').setAttribute('aria-pressed', on);
-  if (on) { syncCursor(); if (playing) { target = pos; startVoice(); } else toast('Lance le défilement : le texte avancera quand tu parleras.'); }
-  else { stopVoice(); for (const el of tokenEls) el.classList.remove('done'); doneUpTo = -1; }
 }
 
 /* ---------- Caméra et enregistrement ---------- */
@@ -657,9 +555,8 @@ function openStage() {
   $('#desk').hidden = true;
   $('#stage').hidden = false;
   renderText();
-  pos = target = 0;
+  pos = 0;
   applySettings(); paint();
-  $('#voice').setAttribute('aria-pressed', S.voice);
   lastClock = 0;
   if (!rafId) rafId = requestAnimationFrame(tick);
   keepAwake();
@@ -667,7 +564,7 @@ function openStage() {
 }
 function closeStage() {
   if (recorder) stopRecording();
-  setPlaying(false); stopVoice(); stopCamera();
+  setPlaying(false); stopCamera();
   cancelAnimationFrame(rafId); rafId = 0;
   wake?.release?.().catch(() => {}); wake = null;
   $('#sheet').hidden = true;
@@ -684,7 +581,6 @@ $('#slower').onclick = () => setSpeed(-10);
 $('#faster').onclick = () => setSpeed(10);
 $('#opts').onclick = () => { $('#sheet').hidden = !$('#sheet').hidden; };
 $('#sheetClose').onclick = () => { $('#sheet').hidden = true; };
-$('#voice').onclick = () => setVoice(!S.voice);
 $('#camBtn').onclick = () => { if (recorder) return; if (camStream) { stopCamera(); keepPlace(measure); } else startCamera(); };
 $('#swap').onclick = () => { if (recorder) return; S.facing = S.facing === 'user' ? 'environment' : 'user'; saveS(); startCamera(); };
 $('#rec').onclick = () => { recorder ? stopRecording() : startRecording(); };
@@ -697,12 +593,12 @@ vp.addEventListener('pointermove', e => {
   if (!drag) return;
   const dy = e.clientY - drag.y;
   if (Math.abs(dy) > 6) drag.moved = true;
-  if (drag.moved) { pos = target = Math.min(maxPos, Math.max(0, drag.p - dy)); paint(); }
+  if (drag.moved) { pos = Math.min(maxPos, Math.max(0, drag.p - dy)); paint(); }
 });
 vp.addEventListener('pointerup', () => {
   if (!drag) return;
   const moved = drag.moved; drag = null;
-  if (moved) { if (S.voice) syncCursor(); } else togglePlay();
+  if (!moved) togglePlay();
 });
 vp.addEventListener('pointercancel', () => { drag = null; });
 vp.addEventListener('wheel', e => { e.preventDefault(); jumpTo(pos + e.deltaY); }, { passive: false });
