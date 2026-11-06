@@ -50,7 +50,7 @@ svg.solid{fill:currentColor;stroke:none}
 .btn.go{background:var(--cue);color:#1b1503;font-weight:700;padding:0 20px}
 .btn.go:hover{background:#ffd375}
 .btn.danger{background:var(--rec);color:#fff}
-.tools{display:flex;gap:8px}
+.tools{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 @media (max-width:760px){
   #desk{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr)}
   #list{flex-direction:row;border-right:0;border-bottom:1px solid var(--line);padding:8px 16px;overflow-x:auto}
@@ -105,6 +105,49 @@ svg.solid{fill:currentColor;stroke:none}
 .row select{background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:8px}
 #take{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;gap:12px;background:var(--ink);padding-block:14px calc(env(safe-area-inset-bottom,0px) + 14px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));touch-action:auto}
 #take video{flex:1;min-height:0;width:100%;background:#000;border-radius:10px}
+#meterWrap{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+#meter{width:120px;height:5px;border-radius:3px;background:#0d1321c4;overflow:hidden}
+#meterBar{height:100%;width:100%;transform-origin:left;transform:scaleX(0);background:#58d68d}
+#meter.hot #meterBar{background:var(--rec)}
+.note{margin:0;color:var(--muted);font-size:14px}
+
+/* Montage */
+#cut{position:fixed;inset:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;grid-template-rows:auto minmax(0,1fr) auto;background:var(--ink)}
+#cut header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:calc(env(safe-area-inset-top,0px) + 10px);padding-bottom:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line)}
+#cut h2{margin:0;font:700 22px/1 var(--display)}
+#cutView{min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;background:#000}
+#cutVideo{max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain}
+#cutSide{grid-row:2/4;grid-column:2;overflow:auto;border-left:1px solid var(--line);padding:6px 16px 16px;padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:4px}
+#cutSide h3{margin:14px 0 2px;font:700 16px/1.2 var(--display);color:var(--cue)}
+#cutLine{min-width:0;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:16px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.cutbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#cutTime{font-variant-numeric:tabular-nums;min-width:48px}
+#cutStats{flex:1 1 180px;color:var(--muted);font-variant-numeric:tabular-nums}
+#cutStats b{color:var(--paper)}
+#cutScroll{overflow-x:auto;overflow-y:hidden;border-radius:8px;background:var(--panel)}
+#cutTrack{position:relative;height:96px}
+#wave{display:block;height:100%;cursor:pointer}
+#cutHead{position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--cue);pointer-events:none}
+.seg{display:inline-flex;background:var(--raise);border-radius:9px;padding:3px}
+.seg button{min-height:38px;padding:0 14px;border-radius:7px;color:var(--muted)}
+.seg button[aria-pressed=true]{background:var(--paper);color:var(--ink);font-weight:700}
+#cutProc:empty{display:none}
+#cutProc{color:var(--cue)}
+#cutBusy{position:absolute;inset:0;z-index:7;display:grid;place-items:center;align-content:center;gap:14px;background:#0d1321e6;padding:16px;text-align:center}
+#cutBusyMsg{font:700 20px/1.3 var(--display)}
+.bar{width:min(320px,80vw);height:8px;border-radius:4px;background:var(--raise);overflow:hidden}
+#cutBar{height:100%;width:0;background:var(--cue)}
+#cutDone{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;gap:12px;background:var(--ink);padding-block:calc(env(safe-area-inset-top,0px) + 14px) calc(env(safe-area-inset-bottom,0px) + 14px);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#cutDone video{flex:1;min-height:0;width:100%;background:#000;border-radius:10px}
+@media (max-width:860px){
+  #cut{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 26vh auto minmax(0,1fr)}
+  #cut .tools{flex-wrap:nowrap}
+  #cutStats{order:9;flex-basis:100%}
+  #cutTime{flex:1}
+  #cutSide{grid-row:4;grid-column:1;border-left:0;border-top:1px solid var(--line);padding-left:max(16px,env(safe-area-inset-left,0px))}
+  #cutLine{padding-right:max(16px,env(safe-area-inset-right,0px))}
+  #cutTrack{height:72px}
+}
 @media (prefers-reduced-motion:reduce){.ctl{transition:none}}
 </style>
 
@@ -122,6 +165,8 @@ svg.solid{fill:currentColor;stroke:none}
       <button class="btn" id="new">Nouveau</button>
       <button class="btn" id="import">Importer .txt</button>
       <input id="file" type="file" accept=".txt,text/plain" hidden>
+      <button class="btn" id="openVideo">Monter une vidéo</button>
+      <input id="videoFile" type="file" accept="video/*" hidden>
     </div>
   </header>
   <nav id="list" aria-label="Mes textes"></nav>
@@ -145,7 +190,7 @@ svg.solid{fill:currentColor;stroke:none}
     <div class="group">
       <button class="ico" id="close" aria-label="Revenir au texte" title="Revenir au texte (Échap)"><svg><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
-    <span id="clock" aria-live="off"></span>
+    <div id="meterWrap"><span id="clock" aria-live="off"></span><div id="meter" hidden title="Niveau du micro"><div id="meterBar"></div></div></div>
     <div class="group">
       <button class="ico" id="camBtn" aria-pressed="false" aria-label="Afficher la caméra" title="Afficher la caméra"><svg><path d="M3 8a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM16 10.500l5-3v9l-5-3"/></svg></button>
       <button class="ico" id="swap" aria-label="Changer de caméra" title="Changer de caméra" hidden><svg><path d="M4 9a8 8 0 0 1 14-3l2 2M20 4v4h-4M20 15a8 8 0 0 1-14 3l-2-2M4 20v-4h4"/></svg></button>
@@ -178,6 +223,9 @@ svg.solid{fill:currentColor;stroke:none}
     <label class="row"><span>Voile sur la caméra</span><output id="o-veil"></output><input id="veilR" type="range" min="0" max="90" step="5"></label>
     <label class="row"><span>Texte en miroir (vitre de prompteur)</span><input id="mirror" type="checkbox"></label>
     <label class="row"><span>Compte à rebours</span><select id="delay"><option value="0">Aucun</option><option value="3">3 secondes</option><option value="5">5 secondes</option></select></label>
+    <label class="row"><span>Micro</span><select id="mic" style="max-width:190px"><option value="">Micro de l'appareil</option></select></label>
+    <label class="row"><span>Son naturel (recommandé, le nettoyage se fait au montage)</span><input id="natural" type="checkbox"></label>
+    <p class="note">Branche ton micro avant de lancer la caméra. La barre sous le chrono montre le niveau : si elle devient rouge, éloigne le micro.</p>
   </div>
 
   <div id="take" hidden>
@@ -186,7 +234,56 @@ svg.solid{fill:currentColor;stroke:none}
       <span id="takeInfo" style="flex:1 1 200px;color:var(--muted)"></span>
       <button class="btn" id="takeDrop">Refaire une prise</button>
       <button class="btn" id="takeShare" hidden>Partager</button>
-      <button class="btn go" id="takeSave">Enregistrer la vidéo</button>
+      <button class="btn" id="takeSave">Enregistrer sans montage</button>
+      <button class="btn go" id="takeEdit">Monter cette prise</button>
+    </div>
+  </div>
+</section>
+
+<section id="cut" hidden aria-label="Montage">
+  <header>
+    <h2>Montage</h2>
+    <div class="tools">
+      <button class="btn" id="cutClose">Fermer</button>
+      <button class="btn go" id="cutExport">Exporter la vidéo</button>
+    </div>
+  </header>
+  <div id="cutView"><video id="cutVideo" playsinline muted></video></div>
+  <div id="cutLine">
+    <div class="cutbar">
+      <button class="ico" id="cutPlay" aria-label="Lire" style="background:var(--paper);color:var(--ink)"><svg class="solid"><use id="cutPlayIcon" href="#i-play"/></svg></button>
+      <span id="cutTime">00:00</span>
+      <span id="cutStats"></span>
+      <button class="ico" id="cutZoomOut" aria-label="Dézoomer"><svg><path d="M5 12h14"/></svg></button>
+      <button class="ico" id="cutZoomIn" aria-label="Zoomer"><svg><path d="M5 12h14M12 5v14"/></svg></button>
+    </div>
+    <div id="cutScroll"><div id="cutTrack"><canvas id="wave"></canvas><div id="cutHead"></div></div></div>
+    <p class="note">Touche une coupe pour la garder ou l'enlever. Touche ailleurs pour te déplacer.</p>
+    <div id="cutProc" role="status"></div>
+  </div>
+  <aside id="cutSide">
+    <h3>Écouter</h3>
+    <div class="seg"><button data-ab="before" aria-pressed="false">Son d'origine</button><button data-ab="after" aria-pressed="true">Son traité</button></div>
+    <h3>Coupes</h3>
+    <label class="row"><span>Couper les blancs</span><input id="oSilence" type="checkbox"></label>
+    <label class="row"><span>Couper les pauses de plus de</span><output id="oPauseOut"></output><input id="oPause" type="range" min="0.3" max="2" step="0.1"></label>
+    <label class="row"><span>Couper les « euh » repérés</span><input id="oFiller" type="checkbox"></label>
+    <p class="note">Repérés à l'oreille, en jaune sur la bande : réécoute-les avant d'exporter.</p>
+    <button class="btn" id="cutMark" style="margin-top:6px">Début de coupe</button>
+    <h3>Son</h3>
+    <label class="row"><span>Réduire le bruit de fond</span><input id="oNoise" type="checkbox"></label>
+    <label class="row"><span>Force</span><output id="oNoiseOut"></output><input id="oNoiseAmt" type="range" min="10" max="100" step="10"></label>
+    <label class="row"><span>Voix claire et posée</span><input id="oVoice" type="checkbox"></label>
+    <label class="row"><span>Volume pour les réseaux</span><input id="oLoud" type="checkbox"></label>
+  </aside>
+  <div id="cutBusy" hidden role="status"><div id="cutBusyMsg"></div><div class="bar"><div id="cutBar"></div></div><button class="btn" id="cutCancel">Annuler</button></div>
+  <div id="cutDone" hidden>
+    <video id="doneVideo" controls playsinline></video>
+    <div class="foot">
+      <span id="doneInfo" style="flex:1 1 200px;color:var(--muted)"></span>
+      <button class="btn" id="doneBack">Revenir au montage</button>
+      <button class="btn" id="doneShare" hidden>Partager</button>
+      <button class="btn go" id="doneSave">Enregistrer la vidéo</button>
     </div>
   </div>
 </section>
@@ -300,7 +397,7 @@ $('#del').onclick = () => {
 const phone = matchMedia('(max-width:760px)').matches;
 const S = Object.assign({
   wpm: 140, size: phone ? 34 : 56, width: phone ? 100 : 75, zone: 60,
-  line: 20, veil: 45, mirror: false, delay: 3, facing: 'user',
+  line: 20, veil: 45, mirror: false, delay: 3, facing: 'user', micId: '', natural: true,
 }, store.get('souffleur.settings', {}));
 const saveS = () => store.set('souffleur.settings', S);
 
@@ -394,6 +491,7 @@ function tick(t) {
     paint();
   }
   updateClock(t);
+  updateMeter();
 }
 function setPlaying(on) {
   playing = on;
@@ -447,12 +545,18 @@ async function startCamera() {
     if (!navigator.mediaDevices) throw new Error('none');
     camStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: S.facing, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-      audio: { echoCancellation: true, noiseSuppression: true },
+      audio: {
+        deviceId: S.micId ? { ideal: S.micId } : undefined,
+        sampleRate: { ideal: 48000 },
+        echoCancellation: !S.natural, noiseSuppression: !S.natural, autoGainControl: !S.natural,
+      },
     });
   } catch (err) {
     toast(camError(err));
     return false;
   }
+  startMeter();
+  listMics();
   const v = $('#cam');
   v.srcObject = camStream; v.hidden = false;
   v.classList.toggle('selfie', S.facing === 'user');
@@ -462,9 +566,51 @@ async function startCamera() {
   applySettings();
   return true;
 }
+/* Micro : liste des appareils et niveau en direct */
+let meterCtx = null, analyser = null, meterData = null, meterSrc = null, hotUntil = 0;
+async function listMics() {
+  const sel = $('#mic');
+  try {
+    const mics = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications');
+    sel.textContent = '';
+    sel.add(new Option("Micro de l'appareil", ''));
+    mics.forEach((m, i) => sel.add(new Option(m.label || `Micro ${i + 1}`, m.deviceId)));
+    sel.value = mics.some(m => m.deviceId === S.micId) ? S.micId : '';
+  } catch {}
+}
+function startMeter() {
+  try {
+    if (!camStream.getAudioTracks().length) return;
+    meterCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    meterCtx.resume();
+    meterSrc?.disconnect();
+    meterSrc = meterCtx.createMediaStreamSource(camStream);
+    analyser = meterCtx.createAnalyser(); analyser.fftSize = 1024;
+    meterData = new Float32Array(analyser.fftSize);
+    meterSrc.connect(analyser);
+    $('#meter').hidden = false;
+  } catch {}
+}
+function updateMeter() {
+  if (!analyser || !camStream) return;
+  analyser.getFloatTimeDomainData(meterData);
+  let peak = 0;
+  for (let i = 0; i < meterData.length; i++) { const v = Math.abs(meterData[i]); if (v > peak) peak = v; }
+  const db = 20 * Math.log10(peak + 1e-6);
+  $('#meterBar').style.transform = `scaleX(${Math.max(0, Math.min(1, (db + 60) / 60)).toFixed(3)})`;
+  if (db > -1.5) hotUntil = performance.now() + 900;
+  $('#meter').classList.toggle('hot', performance.now() < hotUntil);
+}
+$('#mic').onchange = e => { S.micId = e.target.value; saveS(); if (camStream && !recorder) startCamera(); };
+$('#natural').checked = S.natural;
+$('#natural').onchange = e => { S.natural = e.target.checked; saveS(); if (camStream && !recorder) startCamera(); };
+navigator.mediaDevices?.addEventListener?.('devicechange', () => { if (camStream) listMics(); });
+
 function stopCamera() {
   if (camStream) camStream.getTracks().forEach(t => t.stop());
   camStream = null;
+  meterSrc?.disconnect(); meterSrc = null; analyser = null;
+  $('#meter').hidden = true;
   const v = $('#cam');
   v.srcObject = null; v.hidden = true;
   $('#camBtn').setAttribute('aria-pressed', false);
@@ -485,7 +631,7 @@ async function startRecording() {
   if (pos >= maxPos) jumpTo(0);
   counting = true; await countdown(); counting = false;
   chunks = [];
-  const opts = { videoBitsPerSecond: 8000000 };
+  const opts = { videoBitsPerSecond: 8000000, audioBitsPerSecond: 256000 };
   if (type) opts.mimeType = type;
   recorder = new MediaRecorder(camStream, opts);
   recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
@@ -530,6 +676,9 @@ function closeTake() {
   $('#take').hidden = true;
 }
 $('#takeDrop').onclick = () => { closeTake(); jumpTo(0); };
+$('#takeEdit').onclick = () => { const b = takeBlob, n = takeName(); closeTake(); closeStage(); Montage.open(b, n); };
+$('#openVideo').onclick = () => $('#videoFile').click();
+$('#videoFile').onchange = e => { const f = e.target.files[0]; if (f) Montage.open(f, f.name); e.target.value = ''; };
 $('#takeSave').onclick = () => {
   const a = document.createElement('a');
   a.href = $('#takeVideo').src; a.download = takeName();
@@ -626,5 +775,6 @@ document.fonts?.ready.then(() => keepPlace(measure));
 
 loadCurrent();
 </script>
+<script src="montage.js"></script>
 
 </html>
