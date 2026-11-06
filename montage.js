@@ -581,7 +581,7 @@ function showDone(ext, total) {
   const v = $('doneVideo'); v.src = URL.createObjectURL(outBlob);
   $('doneInfo').textContent = `${fmtTime(total)} · ${(outBlob.size / 1048576).toFixed(1).replace('.', ',')} Mo`;
   const f = new File([outBlob], outName, { type: outBlob.type });
-  $('doneShare').hidden = !(navigator.canShare && navigator.canShare({ files: [f] }));
+  $('doneShare').hidden = isIOS || !navigator.canShare?.({ files: [f] });
   $('cutDone').hidden = false;
 }
 
@@ -676,11 +676,8 @@ function bind() {
     if (playing) startAudio($('cutVideo').currentTime);
   };
   $('doneBack').onclick = () => { URL.revokeObjectURL($('doneVideo').src); $('doneVideo').removeAttribute('src'); $('cutDone').hidden = true; };
-  $('doneSave').onclick = () => {
-    const a = document.createElement('a'); a.href = $('doneVideo').src; a.download = outName;
-    document.body.append(a); a.click(); a.remove();
-  };
-  $('doneShare').onclick = async () => { try { await navigator.share({ files: [new File([outBlob], outName, { type: outBlob.type })] }); } catch {} };
+  $('doneSave').onclick = () => saveVideo(outBlob, outName, $('doneInfo'));
+  $('doneShare').onclick = () => shareVideo(outBlob, outName);
   addEventListener('resize', () => { if (!$('cut').hidden) { peaks = null; draw(); } });
   addEventListener('beforeunload', e => { if (blob) e.preventDefault(); });
 }
