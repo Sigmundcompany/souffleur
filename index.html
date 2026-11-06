@@ -226,12 +226,14 @@ svg.solid{fill:currentColor;stroke:none}
     <label class="row"><span>Micro</span><select id="mic" style="max-width:190px"><option value="">Micro de l'appareil</option></select></label>
     <label class="row"><span>Son naturel (recommandé, le nettoyage se fait au montage)</span><input id="natural" type="checkbox"></label>
     <p class="note">Branche ton micro avant de lancer la caméra. La barre sous le chrono montre le niveau : si elle devient rouge, éloigne le micro.</p>
+    <button class="btn diagBtn" style="width:100%;margin-top:8px">Copier le diagnostic</button>
   </div>
 
   <div id="take" hidden>
     <video id="takeVideo" controls playsinline></video>
     <div class="foot">
       <span id="takeInfo" style="flex:1 1 200px;color:var(--muted)"></span>
+      <button class="btn diagBtn">Copier le diagnostic</button>
       <button class="btn" id="takeDrop">Refaire une prise</button>
       <button class="btn" id="takeShare" hidden>Partager</button>
       <button class="btn" id="takeSave">Enregistrer sans montage</button>
@@ -275,12 +277,14 @@ svg.solid{fill:currentColor;stroke:none}
     <label class="row"><span>Force</span><output id="oNoiseOut"></output><input id="oNoiseAmt" type="range" min="10" max="100" step="10"></label>
     <label class="row"><span>Voix claire et posée</span><input id="oVoice" type="checkbox"></label>
     <label class="row"><span>Volume pour les réseaux</span><input id="oLoud" type="checkbox"></label>
+    <button class="btn diagBtn" style="margin-top:12px">Copier le diagnostic</button>
   </aside>
   <div id="cutBusy" hidden role="status"><div id="cutBusyMsg"></div><div class="bar"><div id="cutBar"></div></div><button class="btn" id="cutCancel">Annuler</button></div>
   <div id="cutDone" hidden>
     <video id="doneVideo" controls playsinline></video>
     <div class="foot">
       <span id="doneInfo" style="flex:1 1 200px;color:var(--muted)"></span>
+      <button class="btn diagBtn">Copier le diagnostic</button>
       <button class="btn" id="doneBack">Revenir au montage</button>
       <button class="btn" id="doneShare" hidden>Partager</button>
       <button class="btn go" id="doneSave">Enregistrer la vidéo</button>
@@ -294,6 +298,36 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
+/* ---------- Diagnostic : aucune donnée de texte ni de vidéo, seulement le déroulé technique ---------- */
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const diag = store.get('souffleur.diag', []);
+function note(msg) {
+  diag.push(new Date().toTimeString().slice(0, 8) + ' ' + msg);
+  if (diag.length > 80) diag.splice(0, diag.length - 80);
+  store.set('souffleur.diag', diag);
+}
+addEventListener('error', e => note('erreur : ' + e.message));
+addEventListener('unhandledrejection', e => note('erreur : ' + (e.reason?.message || e.reason)));
+function diagText() {
+  return [
+    'Souffleur v3', navigator.userAgent,
+    `VideoEncoder=${!!window.VideoEncoder} AudioEncoder=${!!window.AudioEncoder} MediaRecorder=${!!window.MediaRecorder}`,
+    `écran ${screen.width}x${screen.height} mémoire ${navigator.deviceMemory || '?'}`,
+    ...diag,
+  ].join('\n');
+}
+async function copyDiag(btn) {
+  const text = diagText(), label = btn.textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copié, colle-le dans la discussion'; }
+  catch {
+    const box = document.createElement('textarea');
+    box.value = text; box.readOnly = true; box.style.cssText = 'width:100%;height:160px';
+    btn.after(box); box.select(); btn.textContent = 'Sélectionne et copie ce texte';
+  }
+  setTimeout(() => { btn.textContent = label; }, 4000);
+}
+document.addEventListener('click', e => { if (e.target.matches('.diagBtn')) copyDiag(e.target); });
+
 
 function norm(w) {
   return w.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
@@ -545,13 +579,19 @@ async function startCamera() {
     if (!navigator.mediaDevices) throw new Error('none');
     camStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: S.facing, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-      audio: {
+      audio: isIOS ? (S.micId ? { deviceId: { ideal: S.micId } } : true) : {
         deviceId: S.micId ? { ideal: S.micId } : undefined,
         sampleRate: { ideal: 48000 },
         echoCancellation: !S.natural, noiseSuppression: !S.natural, autoGainControl: !S.natural,
       },
     });
+    const [vt] = camStream.getVideoTracks(), [at] = camStream.getAudioTracks();
+    const vs = vt?.getSettings?.() || {}, as = at?.getSettings?.() || {};
+    note(`caméra ${vs.width}x${vs.height} ${vs.frameRate} i/s, micro ${at ? 'ok' : 'absent'} ${as.sampleRate || '?'} Hz, muet=${at?.muted}`);
+    if (at) { at.onmute = () => note('micro coupé par le système'); at.onended = () => note('micro arrêté'); }
+    if (vt) { vt.onmute = () => note('caméra coupée par le système'); vt.onended = () => note('caméra arrêtée'); }
   } catch (err) {
+    note('caméra refusée : ' + err.name);
     toast(camError(err));
     return false;
   }
@@ -580,7 +620,7 @@ async function listMics() {
 }
 function startMeter() {
   try {
-    if (!camStream.getAudioTracks().length) return;
+    if (isIOS || !camStream.getAudioTracks().length) return;
     meterCtx ||= new (window.AudioContext || window.webkitAudioContext)();
     meterCtx.resume();
     meterSrc?.disconnect();
@@ -602,6 +642,7 @@ function updateMeter() {
   $('#meter').classList.toggle('hot', performance.now() < hotUntil);
 }
 $('#mic').onchange = e => { S.micId = e.target.value; saveS(); if (camStream && !recorder) startCamera(); };
+if (isIOS) $('#natural').closest('label').hidden = true;
 $('#natural').checked = S.natural;
 $('#natural').onchange = e => { S.natural = e.target.checked; saveS(); if (camStream && !recorder) startCamera(); };
 navigator.mediaDevices?.addEventListener?.('devicechange', () => { if (camStream) listMics(); });
@@ -610,6 +651,7 @@ function stopCamera() {
   if (camStream) camStream.getTracks().forEach(t => t.stop());
   camStream = null;
   meterSrc?.disconnect(); meterSrc = null; analyser = null;
+  meterCtx?.close?.().catch(() => {}); meterCtx = null;
   $('#meter').hidden = true;
   const v = $('#cam');
   v.srcObject = null; v.hidden = true;
@@ -619,7 +661,8 @@ function stopCamera() {
 }
 function pickType() {
   if (!window.MediaRecorder) return null;
-  const list = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  const mp4 = ['video/mp4;codecs=avc3,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4'], webm = ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm'];
+  const list = /Android/.test(navigator.userAgent) ? [...webm, ...mp4] : [...mp4, ...webm];
   return list.find(t => MediaRecorder.isTypeSupported(t)) || '';
 }
 async function startRecording() {
@@ -636,6 +679,8 @@ async function startRecording() {
   recorder = new MediaRecorder(camStream, opts);
   recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = showTake;
+  recorder.onerror = e => note('erreur enregistrement : ' + (e.error?.name || e.type));
+  note(`enregistrement ${recorder.mimeType}`);
   recorder.start(1000);
   recStart = Date.now(); lastClock = 0;
   $('#rec').setAttribute('aria-pressed', true);
@@ -660,22 +705,28 @@ function takeName() {
   const base = (current().title || 'video').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'video';
   return `${base}-prise-${takeNo}.${ext}`;
 }
+let takeHadCam = false;
 function showTake() {
+  takeHadCam = !!camStream;
+  stopCamera(); keepPlace(measure);
+  if (!chunks.length) { note('enregistrement vide'); return toast("La prise est vide : le téléphone n'a rien enregistré. Appuie sur Copier le diagnostic dans les réglages."); }
   takeBlob = new Blob(chunks, { type: chunks[0]?.type || 'video/webm' });
   takeNo++;
   const v = $('#takeVideo');
-  v.src = URL.createObjectURL(takeBlob);
+  v.preload = 'auto'; v.onloadeddata = () => { if (v.currentTime === 0) v.currentTime = .05; };
+  v.src = URL.createObjectURL(takeBlob); v.load();
   $('#takeInfo').textContent = `Prise ${takeNo} · ${fmtTime(takeSeconds)} · ${(takeBlob.size / 1048576).toFixed(1).replace(".", ",")} Mo`;
   const file = new File([takeBlob], takeName(), { type: takeBlob.type });
   $('#takeShare').hidden = !(navigator.canShare && navigator.canShare({ files: [file] }));
   $('#take').hidden = false;
+  note(`prise ${takeBlob.type} ${takeBlob.size} octets, ${takeSeconds.toFixed(1)} s`);
 }
 function closeTake() {
   const v = $('#takeVideo');
   v.pause(); URL.revokeObjectURL(v.src); v.removeAttribute('src'); v.load();
   $('#take').hidden = true;
 }
-$('#takeDrop').onclick = () => { closeTake(); jumpTo(0); };
+$('#takeDrop').onclick = () => { closeTake(); jumpTo(0); if (takeHadCam) startCamera(); };
 $('#takeEdit').onclick = () => { const b = takeBlob, n = takeName(); closeTake(); closeStage(); Montage.open(b, n); };
 $('#openVideo').onclick = () => $('#videoFile').click();
 $('#videoFile').onchange = e => { const f = e.target.files[0]; if (f) Montage.open(f, f.name); e.target.value = ''; };
@@ -775,6 +826,6 @@ document.fonts?.ready.then(() => keepPlace(measure));
 
 loadCurrent();
 </script>
-<script src="montage.js"></script>
+<script src="montage.js?v=3"></script>
 
 </html>

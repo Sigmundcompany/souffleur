@@ -71,7 +71,7 @@ function detectSilences(x, sr, { minPause = .5, keep = .15 } = {}) {
 }
 
 /* ---------- Détection des « euh » : voyelle tenue, voix stable, suivie ou précédée d'une pause ---------- */
-function detectFillers(x, sr) {
+async function detectFillers(x, sr, progress) {
   const step = Math.max(1, Math.round(sr / 16000)), fs = sr / step, n = Math.floor(x.length / step);
   const y = new Float32Array(n);
   for (let i = 0; i < n; i++) { let s = 0; for (let k = 0; k < step; k++) s += x[i * step + k]; y[i] = s / step; }
@@ -85,6 +85,7 @@ function detectFillers(x, sr) {
     const o = f * hop; let e = 0;
     for (let i = 0; i < N; i++) { const v = y[o + i]; e += v * v; re[i] = v * win[i]; im[i] = 0; }
     db[f] = 10 * Math.log10(e / N + 1e-10);
+    if (f % 300 === 0) { progress?.(f / frames); await pause(); }
     if (db[f] < -60) continue;
     let best = 0, lag = 0;
     for (let l = lagMin; l <= lagMax; l += 1) {
@@ -102,7 +103,6 @@ function detectFillers(x, sr) {
       const fc = 150 * Math.pow(4000 / 150, (b + .5) / B); sum += s; wsum += s * fc;
     }
     bands[f] = v; cent[f] = wsum / (sum + 1e-12);
-    if (f % 1500 === 0) { /* laisse respirer l'interface via l'appelant */ }
   }
   const { thr } = speechThreshold(db);
   const stable = f => {
@@ -238,7 +238,20 @@ const O = Object.assign({ pause: .5, cutSilence: true, cutFiller: true, noise: t
 const saveO = () => store.set('souffleur.montage', O);
 let blob = null, name = 'video', raw = null, dur = 0, stage1 = null, final = null;
 let cuts = [], manual = [], fillers = [], markStart = null, zoom = 1;
-let ctx = null, rawBuf = null, doneBuf = null, srcNode = null, ab = 'after', playing = false, watcher = 0, procRun = 0, outBlob = null, cancelled = false;
+/* Le son passe par un lecteur audio classique : sur iPhone, Web Audio se tait quand le bouton silencieux est activé. */
+const player = new Audio();
+player.preload = 'auto';
+let doneUrl = null, ab = 'after', playing = false, watcher = 0, procRun = 0, outBlob = null, run = null;
+function makeWav(x) {
+  const n = x.length, b = new ArrayBuffer(44 + n * 2), d = new DataView(b);
+  const tag = (o, s) => { for (let i = 0; i < 4; i++) d.setUint8(o + i, s.charCodeAt(i)); };
+  tag(0, 'RIFF'); d.setUint32(4, 36 + n * 2, true); tag(8, 'WAVE'); tag(12, 'fmt ');
+  d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+  d.setUint32(24, SR, true); d.setUint32(28, SR * 2, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true);
+  tag(36, 'data'); d.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) d.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x[i])) * 32767, true);
+  return new Blob([b], { type: 'audio/wav' });
+}
 
 function kept() {
   const on = cuts.filter(c => c.on).map(c => [c.start, c.end]).sort((a, b) => a[0] - b[0]);
@@ -291,7 +304,9 @@ function applyLoud() {
     x = limit(y, SR);
   }
   final = x;
-  doneBuf = ctx.createBuffer(1, x.length, SR); doneBuf.copyToChannel(x, 0);
+  if (doneUrl) URL.revokeObjectURL(doneUrl);
+  doneUrl = URL.createObjectURL(makeWav(x));
+  player.src = doneUrl;
   $('cutProc').textContent = '';
   if (playing && ab === 'after') startAudio($('cutVideo').currentTime);
 }
@@ -301,12 +316,13 @@ let procT = 0;
 function scheduleProc() { clearTimeout(procT); procT = setTimeout(process1, 250); }
 
 /* ---------- Lecture ---------- */
-function stopAudio() { if (srcNode) { try { srcNode.stop(); } catch {} srcNode.disconnect(); srcNode = null; } }
+function stopAudio() { player.pause(); }
 function startAudio(t) {
-  stopAudio();
-  const b = ab === 'after' && doneBuf ? doneBuf : rawBuf;
-  if (!b) return;
-  srcNode = ctx.createBufferSource(); srcNode.buffer = b; srcNode.connect(ctx.destination); srcNode.start(0, t);
+  const treated = ab === 'after' && !!doneUrl;
+  $('cutVideo').muted = treated;
+  if (!treated) { player.pause(); return; }
+  player.currentTime = t;
+  player.play().catch(err => note('lecture son : ' + err.name));
 }
 function nextKept(t) {
   const k = kept();
@@ -320,14 +336,15 @@ function setPlay(on) {
   $('cutPlay').setAttribute('aria-label', on ? 'Mettre en pause' : 'Lire');
   clearInterval(watcher);
   if (!on) { v.pause(); stopAudio(); return; }
-  ctx.resume();
   let t = nextKept(v.currentTime);
   if (t === null) t = nextKept(0) ?? 0;
-  v.currentTime = t; v.play().catch(() => {}); startAudio(t);
+  v.currentTime = t; startAudio(t);
+  v.play().catch(err => { note('lecture vidéo : ' + err.name); });
   watcher = setInterval(() => {
     const now = v.currentTime, n = nextKept(now);
     if (n === null) { setPlay(false); return; }
     if (n > now + .03) { v.currentTime = n; startAudio(n); }
+    else if (v.muted && !player.paused && Math.abs(player.currentTime - now) > .2) player.currentTime = now;
     playhead();
   }, 30);
 }
@@ -389,78 +406,113 @@ function markCut() {
 }
 
 /* ---------- Export ---------- */
-let libReady = null;
-function loadLib() {
-  return libReady ||= new Promise((res, rej) => {
+let libReady = null, aacAdded = false;
+function addScript(src) {
+  return new Promise((res, rej) => {
     const s = document.createElement('script');
-    s.src = 'vendor/mediabunny.min.js'; s.onload = () => res(window.Mediabunny); s.onerror = () => { libReady = null; rej(new Error('lib')); };
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error('lib'));
     document.head.append(s);
   });
 }
-async function exportVideo() {
-  setPlay(false); cancelled = false;
-  if (!final) { $('cutProc').textContent = 'Le son est encore en traitement, réessaie dans un instant.'; return; }
-  if (!window.VideoEncoder || !window.AudioEncoder) return fail("Ce navigateur ne sait pas exporter la vidéo. Utilise Chrome, Edge, ou Safari à jour.");
-  status('Préparation de l\'export…', 0);
+function loadLib() {
+  return libReady ||= addScript('vendor/mediabunny.min.js').then(() => window.Mediabunny).catch(e => { libReady = null; throw e; });
+}
+/* Sans encodeur AAC natif, on charge le nôtre : l'Opus dans un MP4 ne se lit pas sur iPhone. */
+async function ensureAac(M) {
+  if (aacAdded || await M.canEncodeAudio('aac', { numberOfChannels: 1, sampleRate: SR })) return;
+  await addScript('vendor/mediabunny-aac-encoder.min.js');
+  window.MediabunnyAacEncoder.registerAacEncoder();
+  aacAdded = true; note('encodeur AAC de secours chargé');
+}
+async function runExport(accel, r) {
   let input, output;
   try {
     const M = await loadLib();
     input = new M.Input({ source: new M.BlobSource(blob), formats: M.ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
     if (!track) throw new Error('video');
-    const size = { width: track.displayWidth, height: track.displayHeight };
+    const size = { width: track.codedWidth, height: track.codedHeight };
     const vCodec = await M.getFirstEncodableVideoCodec(['avc', 'vp9', 'vp8'], size);
-    const aCodec = await M.getFirstEncodableAudioCodec(['aac', 'opus'], { numberOfChannels: 1, sampleRate: SR });
-    if (!vCodec || !aCodec) throw new Error('codec');
+    if (!vCodec) throw new Error('codec');
     const mp4 = vCodec === 'avc';
+    if (mp4) await ensureAac(M);
+    const aCodec = mp4 ? 'aac' : 'opus';
+    note(`export ${size.width}x${size.height} rotation ${track.rotation} ${vCodec}/${aCodec} ${accel}`);
+    r.beat = Date.now();
     output = new M.Output({ format: mp4 ? new M.Mp4OutputFormat({ fastStart: 'in-memory' }) : new M.WebMOutputFormat(), target: new M.BufferTarget() });
-    const vs = new M.VideoSampleSource({ codec: vCodec, quality: M.QUALITY_VERY_HIGH, sizeChangeBehavior: 'contain' });
-    const as = new M.AudioBufferSource({ codec: aCodec, quality: M.QUALITY_VERY_HIGH });
+    const vs = new M.VideoSampleSource({ codec: vCodec, quality: M.QUALITY_HIGH, sizeChangeBehavior: 'contain', hardwareAcceleration: accel });
+    const as = new M.AudioBufferSource({ codec: aCodec, quality: M.QUALITY_HIGH });
     output.addVideoTrack(vs, { rotation: track.rotation }); output.addAudioTrack(as);
     await output.start();
 
-    const ranges = kept(), total = ranges.reduce((s, r) => s + r.end - r.start, 0);
+    const ranges = kept(), total = ranges.reduce((s, x) => s + x.end - x.start, 0);
     const audio = joinRanges(final, SR, ranges);
     const pushAudio = async () => {
       const chunk = SR * 2;
-      for (let o = 0; o < audio.length && !cancelled; o += chunk) {
+      for (let o = 0; o < audio.length && !r.stop; o += chunk) {
         const part = audio.subarray(o, Math.min(audio.length, o + chunk));
         const b = new AudioBuffer({ length: part.length, numberOfChannels: 1, sampleRate: SR });
         b.copyToChannel(part, 0);
         await as.add(b);
+        r.beat = Date.now();
       }
       as.close();
     };
     const pushVideo = async () => {
-      const sink = new M.VideoSampleSink(track);
-      let base = 0, last = -1;
-      for (const r of ranges) {
-        for await (const s of sink.samples(r.start, r.end)) {
-          if (cancelled) { s.close(); break; }
-          const t = Math.max(0, s.timestamp - r.start) + base;
-          if (s.timestamp < r.end && t > last + .0005) {
-            s.setTimestamp(t); last = t;
+      const sink = new M.VideoSampleSink(track, { hardwareAcceleration: accel });
+      let base = 0, last = -1, frames = 0;
+      for (const x of ranges) {
+        for await (const s of sink.samples(x.start, x.end)) {
+          if (r.stop) { s.close(); break; }
+          const t = Math.max(0, s.timestamp - x.start) + base;
+          if (s.timestamp < x.end && t > last + .0005) {
+            s.setTimestamp(t); last = t; frames++;
             await vs.add(s);
+            r.beat = Date.now();
             status('Export de la vidéo…', Math.min(99, t / total * 100));
           }
           s.close();
         }
-        base += r.end - r.start;
+        if (r.stop) break;
+        base += x.end - x.start;
       }
+      note(`images exportées : ${frames}`);
       vs.close();
     };
     await Promise.all([pushAudio(), pushVideo()]);
-    if (cancelled) { await output.cancel(); status(''); return; }
+    if (r.stop) { await output.cancel(); status(''); return; }
     await output.finalize();
     outBlob = new Blob([output.target.buffer], { type: mp4 ? 'video/mp4' : 'video/webm' });
+    note(`export terminé ${outBlob.size} octets`);
     showDone(mp4 ? 'mp4' : 'webm', total);
   } catch (err) {
-    console.error(err);
     try { await output?.cancel(); } catch {}
-    fail(err.message === 'codec' ? "Ce navigateur ne sait pas créer la vidéo finale. Utilise Chrome, Edge, ou Safari à jour."
-      : err.message === 'lib' ? "L'outil d'export n'a pas pu se charger. Vérifie ta connexion puis réessaie."
-      : "L'export a échoué. Réessaie, ou raccourcis la vidéo si elle est très longue.");
+    throw err;
   } finally { input?.dispose?.(); }
+}
+async function exportVideo() {
+  setPlay(false);
+  if (!final) { $('cutProc').textContent = 'Le son est encore en traitement, réessaie dans un instant.'; return; }
+  if (!window.VideoEncoder) return fail("Ce navigateur ne sait pas exporter la vidéo. Mets à jour Chrome ou Safari.");
+  for (const accel of ['no-preference', 'prefer-software']) {
+    status('Préparation de l\'export…', 0);
+    const r = run = { stop: false, beat: Date.now() };
+    let dog = 0;
+    const stalled = new Promise((_, rej) => { dog = setInterval(() => { if (Date.now() - r.beat > 30000) rej(new Error('stall')); }, 1000); });
+    try {
+      await Promise.race([runExport(accel, r), stalled]);
+      return;
+    } catch (err) {
+      r.stop = true;
+      note(`export échoué (${accel}) : ${err.name} ${err.message}`);
+      console.error(err);
+      if (accel === 'no-preference' && err.message !== 'lib' && err.message !== 'codec') continue;
+      fail(err.message === 'codec' ? "Ce navigateur ne sait pas créer la vidéo finale. Mets à jour Chrome ou Safari."
+        : err.message === 'lib' ? "L'outil d'export n'a pas pu se charger. Vérifie ta connexion puis réessaie."
+        : "L'export n'a pas abouti. Appuie sur Copier le diagnostic et envoie-le-moi.");
+      return;
+    } finally { clearInterval(dog); }
+  }
 }
 function fail(msg) { status(''); $('cutProc').textContent = msg; }
 let outName = '';
@@ -475,37 +527,63 @@ function showDone(ext, total) {
 }
 
 /* ---------- Ouverture ---------- */
+async function readAudio(b) {
+  try {
+    return mono(await new OfflineAudioContext(1, 1, SR).decodeAudioData(await b.arrayBuffer()));
+  } catch (err) { note('décodage du son par le navigateur impossible : ' + err.name); }
+  const M = await loadLib();
+  const input = new M.Input({ source: new M.BlobSource(b), formats: M.ALL_FORMATS });
+  const t = await input.getPrimaryAudioTrack();
+  if (!t) { note('aucune piste son dans le fichier'); return null; }
+  const parts = []; let total = 0, rate = t.sampleRate;
+  for await (const w of new M.AudioBufferSink(t).buffers()) { const m = mono(w.buffer); rate = w.buffer.sampleRate; parts.push(m); total += m.length; }
+  input.dispose?.();
+  const x = new Float32Array(total); let o = 0;
+  for (const p of parts) { x.set(p, o); o += p.length; }
+  if (rate === SR) return x;
+  const off = new OfflineAudioContext(1, Math.ceil(total * SR / rate), SR);
+  const buf = off.createBuffer(1, total, rate); buf.copyToChannel(x, 0);
+  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
+  return (await off.startRendering()).getChannelData(0);
+}
 async function open(file, fileName) {
   blob = file; name = (fileName || 'video').replace(/\.[^.]+$/, '');
+  note(`montage : ${file.type || 'type inconnu'}, ${file.size} octets`);
   $('desk').hidden = true; $('stage').hidden = true; $('cut').hidden = false; $('cutDone').hidden = true;
-  $('cutProc').textContent = ''; markStart = null; manual = []; zoom = 1; peaks = null; final = null; stage1 = null; doneBuf = null;
-  ctx ||= new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SR });
-  const v = $('cutVideo'); v.src = URL.createObjectURL(blob);
+  $('cutProc').textContent = ''; markStart = null; manual = []; zoom = 1; peaks = null; final = null; stage1 = null;
+  if (doneUrl) { URL.revokeObjectURL(doneUrl); doneUrl = null; }
+  const v = $('cutVideo');
+  v.preload = 'auto'; v.muted = true;
+  v.onloadeddata = () => { note(`vidéo prête ${v.videoWidth}x${v.videoHeight}`); if (v.currentTime === 0) v.currentTime = .05; };
+  v.onerror = () => { note('vidéo illisible, code ' + v.error?.code); };
+  v.src = URL.createObjectURL(blob);
+  v.load();
   status('Analyse du son…');
   await pause();
   try {
-    const off = new OfflineAudioContext(1, 1, SR);
-    const buf = await off.decodeAudioData(await blob.arrayBuffer());
-    raw = mono(buf); dur = raw.length / SR;
-    rawBuf = ctx.createBuffer(1, raw.length, SR); rawBuf.copyToChannel(raw, 0);
-  } catch (err) {
-    console.error(err); status('');
-    $('cutProc').textContent = "Impossible de lire le son de cette vidéo. Essaie un fichier MP4.";
+    raw = await readAudio(blob);
+  } catch (err) { note('lecture du son échouée : ' + err.message); raw = null; }
+  if (!raw || !raw.length) {
+    status('');
+    $('cutProc').textContent = "Je ne trouve pas de son dans cette vidéo. Appuie sur Copier le diagnostic et envoie-le-moi.";
     return;
   }
+  dur = raw.length / SR;
+  let peak = 0; for (let i = 0; i < raw.length; i += 7) { const a = Math.abs(raw[i]); if (a > peak) peak = a; }
+  note(`son : ${dur.toFixed(1)} s, crête ${peak.toFixed(4)}`);
+  status('Recherche des blancs et des « euh »…', 0);
   await pause();
-  status('Recherche des blancs et des « euh »…');
-  await pause();
-  fillers = detectFillers(raw, SR);
+  fillers = await detectFillers(raw, SR, p => status('Recherche des blancs et des « euh »…', p * 100));
   rebuildCuts();
   status('');
-  process1();
+  await process1();
+  if (peak < .0005) $('cutProc').textContent = "Cette prise ne contient aucun son : le micro n'a rien enregistré. Vérifie l'autorisation du micro, puis refais une prise.";
 }
 function close() {
   setPlay(false); procRun++;
   const v = $('cutVideo'); URL.revokeObjectURL(v.src); v.removeAttribute('src'); v.load();
   $('cut').hidden = true; $('desk').hidden = false;
-  raw = final = stage1 = rawBuf = doneBuf = null; blob = outBlob = null;
+  raw = final = stage1 = null; blob = outBlob = null; player.removeAttribute('src');
 }
 
 /* ---------- Commandes ---------- */
@@ -526,7 +604,7 @@ function bind() {
   $('cutClose').onclick = close;
   $('cutMark').onclick = markCut;
   $('cutExport').onclick = exportVideo;
-  $('cutCancel').onclick = () => { cancelled = true; };
+  $('cutCancel').onclick = () => { if (run) run.stop = true; status(''); };
   $('cutZoomIn').onclick = () => { zoom = Math.min(16, zoom * 2); peaks = null; draw(); };
   $('cutZoomOut').onclick = () => { zoom = Math.max(1, zoom / 2); peaks = null; draw(); };
   $('wave').onclick = onTimeline;
