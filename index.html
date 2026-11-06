@@ -278,7 +278,7 @@ svg.solid{fill:currentColor;stroke:none}
     <button class="btn" id="cutMark" style="margin-top:6px">Début de coupe</button>
     <div id="fxPanel">
       <h3>Image</h3>
-      <div class="cutbar"><button class="btn go" id="fxAuto">Embellir</button><button class="btn" id="fxReset">Retirer</button><button class="btn" id="fxCompare">Maintenir pour comparer</button></div>
+      <div class="cutbar"><button class="btn go" id="fxAuto">Embellir</button><button class="btn go" id="fxStrong">Embellir fort</button><button class="btn" id="fxReset">Retirer</button><button class="btn" id="fxCompare">Maintenir pour comparer</button></div>
       <div id="looks" role="group" aria-label="Looks"></div>
       <label class="row"><span>Peau lissée</span><output id="oSkinOut"></output><input id="oSkin" type="range" min="0" max="100" step="5"></label>
       <label class="row"><span>Lumière du visage</span><output id="oLightOut"></output><input id="oLight" type="range" min="0" max="100" step="5"></label>
@@ -322,7 +322,7 @@ addEventListener('error', e => note('erreur : ' + e.message));
 addEventListener('unhandledrejection', e => note('erreur : ' + (e.reason?.message || e.reason)));
 function diagText() {
   return [
-    'Souffleur v4', navigator.userAgent,
+    'Souffleur v7', navigator.userAgent,
     `VideoEncoder=${!!window.VideoEncoder} AudioEncoder=${!!window.AudioEncoder} MediaRecorder=${!!window.MediaRecorder}`,
     `écran ${screen.width}x${screen.height} mémoire ${navigator.deviceMemory || '?'}`,
     ...diag,
@@ -838,7 +838,7 @@ document.fonts?.ready.then(() => keepPlace(measure));
 
 loadCurrent();
 </script>
-<script src="beaute.js?v=6"></script>
-<script src="montage.js?v=6"></script>
+<script src="beaute.js?v=7"></script>
+<script src="montage.js?v=7"></script>
 
 </html>

@@ -384,6 +384,7 @@ function fxBind() {
   };
   slide('oSkin', 'skin'); slide('oLight', 'light'); slide('oSharp', 'sharp');
   $('fxAuto').onclick = () => { Object.assign(O, { skin: 55, light: 30, sharp: 35, look: 'nature' }); saveO(); fxSync(); };
+  $('fxStrong').onclick = () => { Object.assign(O, { skin: 100, light: 45, sharp: 45, look: 'eclat' }); saveO(); fxSync(); };
   $('fxReset').onclick = () => { Object.assign(O, { skin: 0, light: 0, sharp: 0, look: 'none' }); saveO(); fxSync(); };
   const cmp = $('fxCompare'), hold = on => { fxCompare = on; fxDirty = true; };
   cmp.onpointerdown = () => hold(true);

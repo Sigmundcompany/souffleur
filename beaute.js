@@ -3,7 +3,7 @@
 const LOOKS = {
   none:   { name: 'Aucun',   sat: 1,    contrast: 1,    warm: 0,    fade: 0,   lift: 0 },
   nature: { name: 'Naturel', sat: 1.05, contrast: 1.03, warm: .15,  fade: 0,   lift: .03 },
-  eclat:  { name: 'Éclat',   sat: 1.1,  contrast: 1.02, warm: .28,  fade: 0,   lift: .12 },
+  eclat:  { name: 'Éclat',   sat: 1.14, contrast: 1.05, warm: .25,  fade: 0,   lift: .08 },
   doux:   { name: 'Doux',    sat: .96,  contrast: .93,  warm: .22,  fade: .22, lift: .08 },
   chaud:  { name: 'Chaud',   sat: 1.06, contrast: 1.02, warm: .7,   fade: 0,   lift: .02 },
   froid:  { name: 'Froid',   sat: 1,    contrast: 1.03, warm: -.55, fade: 0,   lift: .02 },
@@ -58,8 +58,11 @@ void main() {
   }
 
   /* Lumière : relève les ombres et le teint, garde les hautes lumières */
-  c = pow(max(c, 0.), vec3(1. - light * .34));
-  c += m * light * .025;
+  c = pow(max(c, 0.), vec3(1. - light * .26));
+  c += m * light * .02;
+
+  /* Teint : un peu de rose et de couleur, pour ne pas blanchir le visage */
+  c = mix(c, c * vec3(1.035, .975, .985), m * skinAmt);
 
   /* Look */
   c = (c - .5) * contrast + .5;
